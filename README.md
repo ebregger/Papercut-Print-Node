@@ -61,14 +61,13 @@ This architecture only works if MTU has PaperCut **Web Print** enabled. Many sch
 cd ~/mtu-print-node
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python src/probe_papercut.py --public-only
+python src/probe_wsd.py --public-only
 ```
 
 **Step B — authenticated discovery (requires MTU VPN + credentials file):**
 
 ```bash
 # After filling config/credentials.json:
-python src/probe_papercut.py --discover
 # Or explicitly: --account default
 ```
 
@@ -153,10 +152,6 @@ curl -I https://printing.mtu.edu/
 ### 7. Full upload probe (optional, after discovery passes)
 
 ```bash
-python src/probe_papercut.py \
-  --account default \
-  --queue husky-bw \
-  --pdf /path/to/test.pdf
 ```
 
 ### 8. Start the daemon
@@ -182,10 +177,8 @@ Use **IPP Everywhere** or **Generic IPP Printer** driver. Clients send PDF over 
 | File | Purpose |
 |------|---------|
 | `src/color_detect.py` | Ghostscript `inkcov` color analysis |
-| `src/papercut_client.py` | Web Print login + wizard scraper |
 | `src/ipp_behaviour.py` | ippserver hook per user |
 | `src/daemon.py` | Multi-printer IPP + mDNS daemon |
-| `src/probe_papercut.py` | Debug PaperCut HTML flow |
 
 ## Notes
 
