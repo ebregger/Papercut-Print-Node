@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "credentials_path": "~/mtu-print-node/config/credentials.json",
+    "mobility_print": {
+      "host": "print.mtu.edu",
+      "port": 9163,
+      "use_tls": false,
+      "timeout": 120
+    },
+    "default_bw_on_error": true,
+    "default_sides": "one-sided",
+    "color_threshold": 0.0001,
+    "spool_dir": "~/mtu-print-node/spool",
+    "base_port": 8631,
+    "hostname": "pixel-print-node",
+    "wsd": {
+      "enabled": false,
+      "host_ip": "192.168.0.63",
+      "port": 5357
+    }
+  },
+  "users": [
+    {
+      "id": "alice",
+      "credential_id": "default",
+      "display_name": "MTU Print - Alice",
+      "queues": {
+        "bw": "husky-bw",
+        "color": "husky-color"
+      }
+    }
+  ]
+}
