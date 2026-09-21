@@ -19,6 +19,7 @@ OPERATION_PRINT_JOB = 0x0002
 
 # Attribute group / value tags.
 TAG_OPERATION_ATTRIBUTES = 0x01
+TAG_JOB_ATTRIBUTES = 0x02
 TAG_END_OF_ATTRIBUTES = 0x03
 TAG_CHARSET = 0x47
 TAG_NATURAL_LANGUAGE = 0x48
@@ -58,26 +59,32 @@ def build_print_job_request(
   """
   Build a binary IPP Print-Job request (operation 0x0002).
 
-  Layout: IPP header + operation attributes + end tag + raw document bytes.
+  Layout: IPP header + operation attributes + job attributes (if any) + end tag + raw document bytes.
   """
   message = bytearray()
   message += struct.pack(">BB", IPP_VERSION_MAJOR, IPP_VERSION_MINOR)
   message += struct.pack(">H", OPERATION_PRINT_JOB)
   message += struct.pack(">I", request_id)
 
+  # Operation Attributes (0x01)
   message += struct.pack(">B", TAG_OPERATION_ATTRIBUTES)
   message += _ipp_attribute(TAG_CHARSET, "attributes-charset", "utf-8")
-  message += _ipp_attribute(TAG_NATURAL_LANGUAGE, "attributes-natural-language", "en")
-  message += _ipp_attribute(TAG_URI, "printer-uri", printer_uri)
-  message += _ipp_attribute(TAG_MIME_MEDIA_TYPE, "document-format", "application/pdf")
+  message += _ipp_attribute (TAG_NATURAL_LANGUAGE, "attributes-natural-language", "en")
+  message += _ipp_attribute  (TAG_URI, "printer-uri", printer_uri)
+  message += _ipp_attribute   (TAG_MIME_MEDIA_TYPE, "document-format", "application/pdf")
   if requesting_user_name:
     message += _ipp_attribute(
       TAG_NAME_WITHOUT_LANGUAGE, "requesting-user-name", requesting_user_name
     )
   if job_name:
-    message += _ipp_attribute(TAG_NAME_WITHOUT_LANGUAGE, "job-name", job_name)
+    message += _ipp_attribute(TAG_NAME_WITHOUT_LANGUAGE,"job-name", job_name)
+
+  # Job Attributes (0x02)
   if sides:
+    message += struct.pack(">B", TAG_JOB_ATTRIBUTES)
     message += _ipp_attribute(TAG_KEYWORD, "sides", sides)
+
+  # End of Attributes (0x03)
   message += struct.pack(">B", TAG_END_OF_ATTRIBUTES)
   message += pdf_data
   return bytes(message)
