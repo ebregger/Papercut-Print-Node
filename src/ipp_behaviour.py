@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class MtuUserPrinter(SaveFilePrinter):
-  """IPP endpoint for one MTU user; forwards jobs via Mobility Print."""
+  """IPP endpoint for one PaperCut user; forwards jobs via Mobility Print."""
 
   def __init__(
     self,
@@ -78,7 +78,7 @@ class MtuUserPrinter(SaveFilePrinter):
           SectionEnum.printer,
           b"printer-info",
           TagEnum.text_without_language,
-        ): [f"MTU print node for {self.user_id}".encode("utf-8")],
+        ): [f"PaperCut print node for {self.user_id}".encode("utf-8")],
         (
           SectionEnum.printer,
           b"printer-uri-supported",

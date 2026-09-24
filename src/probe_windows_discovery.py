@@ -1,4 +1,4 @@
-"""Trigger Windows device discovery and look for the MTU WSD printer."""
+"""Trigger Windows device discovery and look for the PaperCut WSD printer."""
 
 import subprocess
 import sys
@@ -31,7 +31,7 @@ def main() -> int:
 
     query = (
         "Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | "
-        "Where-Object { $_.FriendlyName -like '*MTU*' -or $_.FriendlyName -like '*Edison*' "
+        "Where-Object { $_.FriendlyName -like '*PaperCut*' -or $_.FriendlyName -like '*Edison*' "
         "-or $_.InstanceId -like '*PRINTENUM*' -or $_.InstanceId -like '*WSD*' } | "
         "Select-Object FriendlyName,Class,InstanceId,Status | Format-Table -AutoSize | Out-String -Width 200"
     )
@@ -41,13 +41,13 @@ def main() -> int:
 
     printers = run_ps(
         "Get-Printer -ErrorAction SilentlyContinue | "
-        "Where-Object { $_.Name -like '*MTU*' -or $_.Name -like '*Edison*' } | "
+        "Where-Object { $_.Name -like '*PaperCut*' -or $_.Name -like '*Edison*' } | "
         "Select-Object Name,PortName,DriverName | Format-Table -AutoSize | Out-String -Width 200"
     )
     print("Installed printers:")
     print(printers.strip() or "(none)")
 
-    if "MTU" in devices or "Edison" in devices:
+    if "PaperCut" in devices or "Edison" in devices:
         print("WINDOWS_PNP_OK")
         return 0
     return 1

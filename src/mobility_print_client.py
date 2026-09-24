@@ -169,7 +169,7 @@ class MobilityPrintClient:
       printer_uri=printer_uri,
       pdf_data=pdf_data,
       requesting_user_name=username,
-      job_name=job_name or f"mtu-print-node-{queue_name}",
+      job_name=job_name or f"papercut-print-{queue_name}",
       sides=sides,
     )
     url = self.print_url(queue_name)

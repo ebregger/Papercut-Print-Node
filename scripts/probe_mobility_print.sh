@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Probe MTU PaperCut Mobility Print ports from Termux (requires MTU VPN).
+# Probe PaperCut Mobility Print ports from Termux (requires the VPN connection).
 set -euo pipefail
 
 HOST="${1:-print.mtu.edu}"

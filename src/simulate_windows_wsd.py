@@ -14,7 +14,7 @@ HTTP_PORT = 5357
 PRINTER_URL = f"http://{HOST}:{HTTP_PORT}/Printer1/WebServices"
 
 
-def probe() -> tuple[str, str]:
+def probe(host: str = "239.255.255.250") -> tuple[str, str]:
     message_id = f"urn:uuid:{uuid.uuid4()}"
     probe_xml = f"""<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
@@ -36,7 +36,7 @@ def probe() -> tuple[str, str]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", 0))
     sock.settimeout(5)
-    sock.sendto(probe_xml.encode(), ("239.255.255.250", 3702))
+    sock.sendto(probe_xml.encode(), (host, 3702))
     data, _addr = sock.recvfrom(65535)
     text = data.decode("utf-8", errors="replace")
     start = text.find("<wsd:XAddrs>")
@@ -72,7 +72,7 @@ def soap_post(url: str, action: str, body: str = "") -> requests.Response:
 
 def main() -> int:
     print("1) WSD Probe")
-    xaddr, probe_reply = probe()
+    xaddr, probe_reply = probe(HOST if "--unicast" in sys.argv else "239.255.255.250")
     print("   XAddrs:", xaddr or "(missing)")
     if not xaddr:
         print(probe_reply[:500])

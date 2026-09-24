@@ -1,4 +1,4 @@
-"""Load MTU PaperCut credentials from a restricted local secrets file."""
+"""Load PaperCut credentials from a restricted local secrets file."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def load_credentials_file(path: Path | None = None, *, settings: dict | None = N
       raise CredentialsError(
         f"accounts.{account_id} needs non-empty username and password"
       )
-    if password.startswith("PASTE_") or password == "YOUR_MTU_PASSWORD":
+    if password.startswith("PASTE_") or password == "YOUR_PAPERCUT_PASSWORD":
       raise CredentialsError(
         f"accounts.{account_id} still has a placeholder password"
       )

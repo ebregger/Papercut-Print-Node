@@ -21,7 +21,7 @@ def main() -> int:
     printer_uri="ipp://print.mtu.edu:9163/printers/husky-bw",
     pdf_data=MINIMAL_PDF,
     requesting_user_name=creds.username,
-    job_name="mtu-probe-test",
+    job_name="papercut-probe-test",
   )
   root = Path(__file__).resolve().parent.parent
   ipp_path = root / "logs" / "test.ipp"

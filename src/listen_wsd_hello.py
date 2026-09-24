@@ -21,7 +21,7 @@ while time.time() < end:
     try:
         data, addr = sock.recvfrom(65535)
         text = data.decode("utf-8", errors="replace")
-        if "MTU Print" in text or "192.168.0.63" in text or "PrintDeviceType" in text:
+        if "Papercut" in text or "192.168.0.63" in text or "PrintDeviceType" in text:
             found += 1
             action = "Hello" if "/Hello" in text else "ProbeMatch" if "ProbeMatch" in text else "other"
             print(f"[{action}] from {addr[0]}:{addr[1]} ({len(data)} bytes)")

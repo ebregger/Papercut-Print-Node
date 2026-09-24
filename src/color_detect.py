@@ -39,6 +39,9 @@ class ColorAnalysis:
 
 def _resolve_gs_binary() -> str:
   """Return the Ghostscript binary name, preferring Termux's `gs`."""
+  termux_gs = Path("/data/data/com.termux/files/usr/bin/gs")
+  if termux_gs.is_file():
+    return str(termux_gs)
   for candidate in ("gs", "gswin64c", "gswin32c"):
     if shutil.which(candidate):
       return candidate

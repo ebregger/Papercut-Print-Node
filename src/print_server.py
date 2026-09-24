@@ -51,7 +51,6 @@ class _MultiplexHandler(socketserver.BaseRequestHandler):
       if not peek:
         return
       if peek.startswith(b"%PDF"):
-        sock.recv(len(peek))
         pdf = _read_all(sock)
         logger.info("Raw PDF job (%d bytes) from %s", len(pdf), self.client_address)
         self.server.raw_handler(pdf)

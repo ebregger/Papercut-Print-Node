@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# One-shot Termux bootstrap for the MTU print node.
+# One-shot Termux bootstrap for the PaperCut print node.
 set -euo pipefail
 
 PKG="com.termux"
@@ -16,6 +16,7 @@ pkg install -y \
   ghostscript \
   git \
   termux-api \
+  cups \
   openssh
 
 echo "==> Creating Python virtual environment"
@@ -41,13 +42,13 @@ sleep 30
 cd ~/mtu-print-node
 source .venv/bin/activate
 termux-wake-lock
-nohup python src/daemon.py -c config/users.json -v \
+nohup bash scripts/run_daemon.sh \
   >> logs/daemon.log 2>&1 &
 BOOT
 chmod +x "${TERMUX_HOME}/.termux/boot/mtu-print-node"
 
 echo "==> Done. Next steps:"
-echo "  1. Connect MTU VPN on the phone (OpenConnect / Cisco Secure Client)"
+echo "  1. Connect the VPN on the phone (OpenConnect / Cisco Secure Client)"
 echo "  2. Edit ~/mtu-print-node/config/credentials.json (chmod 600)"
-echo "  3. Probe Web Print: python src/probe_papercut.py --discover"
+echo "  3. Install/start the multicast helper APK from a computer (see README.md)"
 echo "  4. Run: bash scripts/run_daemon.sh"

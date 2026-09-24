@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Multi-user IPP print node for MTU Mobility Print."""
+"""Multi-user IPP print node for PaperCut Mobility Print."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-import socket
 import sys
 import time
 from pathlib import Path
@@ -19,6 +18,7 @@ from print_server import MultiplexPrintServer, start_multiplex_server
 from credentials import CredentialsError, merge_user_credentials
 from ipp_behaviour import MtuUserPrinter
 from mobility_print_client import MobilityPrintClient
+from mdns_service import IppAdvertiser, interface_ipv4
 from wsd_service import WsdPrintAdvertiser
 
 logger = logging.getLogger(__name__)
@@ -33,33 +33,22 @@ def load_config(path: Path) -> dict:
     return json.load(handle)
 
 
-def local_ip() -> str:
-  """Best-effort LAN address for WSD advertisements."""
-  probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  try:
-    probe.connect(("8.8.8.8", 80))
-    return probe.getsockname()[0]
-  except OSError:
-    return "127.0.0.1"
-  finally:
-    probe.close()
-
-
 def start_printer(
     user: dict,
     settings: dict,
     port: int,
     host: str,
+    advertised_host: str,
 ) -> tuple[MultiplexPrintServer, MtuUserPrinter]:
-  base_uri = f"ipp://{host}:{port}/".encode()
-  printer_uri = f"ipp://{host}:{port}/printer".encode()
+  base_uri = f"ipp://{advertised_host}:{port}/".encode()
+  printer_uri = f"ipp://{advertised_host}:{port}/printer".encode()
   spool_dir = expand_path(settings.get("spool_dir", "~/mtu-print-node/spool"))
   user_spool = str(Path(spool_dir) / user["id"])
   mobility_client = MobilityPrintClient.from_settings(settings)
 
   behaviour = MtuUserPrinter(
     user_id=user["id"],
-    display_name=user.get("display_name", f"MTU Print - {user['id']}"),
+    display_name=user.get("display_name", f"Papercut - {user['id']}"),
     username=user["username"],
     password=user["password"],
     queue_bw=user["queues"]["bw"],
@@ -85,14 +74,14 @@ def start_printer(
   logger.info(
     "IPP listening for %s at ipp://%s:%s/printer",
     user["id"],
-    host,
+    advertised_host,
     port,
   )
   return server, behaviour
 
 
 def main(argv: list[str] | None = None) -> int:
-  parser = argparse.ArgumentParser(description="MTU headless print node")
+  parser = argparse.ArgumentParser(description="PaperCut headless print node")
   parser.add_argument(
     "-c",
     "--config",
@@ -104,6 +93,16 @@ def main(argv: list[str] | None = None) -> int:
     "--host",
     default="0.0.0.0",
     help="Address to bind (0.0.0.0 listens on all interfaces)",
+  )
+  parser.add_argument(
+    "--no-mdns",
+    action="store_true",
+    help="Disable mDNS/DNS-SD IPP advertisement",
+  )
+  parser.add_argument(
+    "--wsd",
+    action="store_true",
+    help="Enable WS-Discovery advertisement",
   )
   parser.add_argument(
     "--no-wsd",
@@ -138,23 +137,44 @@ def main(argv: list[str] | None = None) -> int:
 
   bind_host = args.host
   base_port = int(settings.get("base_port", 8631))
+  mdns_settings = settings.get("mdns", {})
+  mdns_enabled = not args.no_mdns and mdns_settings.get("enabled", True)
+  wifi_ip = mdns_settings.get("host_ip")
+  if not wifi_ip:
+    try:
+      wifi_ip = interface_ipv4(mdns_settings.get("interface", "wlan0"))
+    except OSError as exc:
+      logger.error("Cannot get Wi-Fi IP for printer advertisement: %s", exc)
+      return 1
   wsd_settings = settings.get("wsd", {})
-  wsd_enabled = not args.no_wsd and wsd_settings.get("enabled", False)
-  wsd_ip = wsd_settings.get("host_ip") or local_ip()
+  wsd_enabled = args.wsd or (not args.no_wsd and wsd_settings.get("enabled", False))
+  wsd_ip = wsd_settings.get("host_ip") or wifi_ip
   wsd_port = int(wsd_settings.get("port", 5357))
 
   servers: list[MultiplexPrintServer] = []
   wsd_advertisers: list[WsdPrintAdvertiser] = []
+  mdns_advertiser: IppAdvertiser | None = None
 
   try:
+    if mdns_enabled:
+      mdns_advertiser = IppAdvertiser(
+        address=wifi_ip, hostname=settings.get("hostname", "pixel-print-node")
+      )
+      mdns_advertiser.start()
     for index, user in enumerate(users):
       port = base_port + index
-      server, behaviour = start_printer(user, settings, port, bind_host)
+      server, behaviour = start_printer(user, settings, port, bind_host, wifi_ip)
       servers.append(server)
+      if mdns_advertiser:
+        mdns_advertiser.register(
+          name=user.get("display_name", f"Papercut - {user['id']}"),
+          user_id=user["id"],
+          port=port,
+        )
       if wsd_enabled and index == 0:
         advertiser = WsdPrintAdvertiser(
           host_ip=wsd_ip,
-          printer_name=user.get("display_name", f"MTU Print - {user['id']}"),
+          printer_name=user.get("display_name", f"Papercut - {user['id']}"),
           ipp_port=port,
           http_port=wsd_port,
           on_print_job=lambda data, _fmt, b=behaviour: b.process_pdf_bytes(data),
@@ -163,14 +183,18 @@ def main(argv: list[str] | None = None) -> int:
         wsd_advertisers.append(advertiser)
 
     logger.info(
-      "MTU print node ready (%d printer(s)). WSD=helper APK mDNS=helper APK.",
+      "PaperCut print node ready (%d printer(s)). mDNS=%s WSD=%s.",
       len(users),
+      mdns_enabled,
+      wsd_enabled,
     )
     while True:
       time.sleep(300)
   except KeyboardInterrupt:
     logger.info("Shutting down...")
   finally:
+    if mdns_advertiser:
+      mdns_advertiser.stop()
     for advertiser in wsd_advertisers:
       advertiser.stop()
     for server in servers:

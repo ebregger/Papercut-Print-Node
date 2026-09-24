@@ -13,6 +13,10 @@
     "spool_dir": "~/mtu-print-node/spool",
     "base_port": 8631,
     "hostname": "pixel-print-node",
+    "mdns": {
+      "enabled": true,
+      "interface": "wlan0"
+    },
     "wsd": {
       "enabled": false,
       "host_ip": "192.168.0.63",
@@ -23,7 +27,7 @@
     {
       "id": "alice",
       "credential_id": "default",
-      "display_name": "MTU Print - Alice",
+      "display_name": "Papercut - Edison",
       "queues": {
         "bw": "husky-bw",
         "color": "husky-color"

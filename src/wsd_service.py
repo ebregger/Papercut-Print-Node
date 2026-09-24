@@ -7,6 +7,7 @@ import re
 import socket
 import struct
 import threading
+import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
@@ -23,6 +24,7 @@ NS_WSD = "http://schemas.xmlsoap.org/ws/2005/04/discovery"
 NS_WSDP = "http://schemas.xmlsoap.org/ws/2006/02/devprof"
 NS_NPRT = "http://schemas.microsoft.com/windows/2006/08/wdp/print"
 NS_WSX = "http://schemas.xmlsoap.org/ws/2004/09/mex"
+NS_WSE = "http://schemas.xmlsoap.org/ws/2004/08/eventing"
 NS_UNS1 = "http://www.microsoft.com/windows/test/testdevice/11/2005"
 NS_PNPX = "http://schemas.microsoft.com/windows/pnpx/2005/10"
 
@@ -39,6 +41,9 @@ CREATE_PRINT_JOB = (
 SEND_DOCUMENT = (
   "http://schemas.microsoft.com/windows/2006/08/wdp/print/SendDocument"
 )
+SUBSCRIBE = f"{NS_WSE}/Subscribe"
+RENEW = f"{NS_WSE}/Renew"
+UNSUBSCRIBE = f"{NS_WSE}/Unsubscribe"
 
 PrintJobHandler = Callable[[bytes, str], None]
 
@@ -83,8 +88,9 @@ def _resolve_address(xml: str) -> str | None:
 def _types_match(probe_types: list[str]) -> bool:
   if not probe_types:
     return True
-  advertised = {WSD_TYPES, *WSD_TYPES.split()}
-  return any(token in advertised for token in probe_types)
+  # QName prefixes in a Probe are chosen by the client, not the device.
+  return any(token.rsplit(":", 1)[-1] in {"Device", "PrintDeviceType"}
+             for token in probe_types)
 
 
 class WsdPrintAdvertiser:
@@ -105,7 +111,8 @@ class WsdPrintAdvertiser:
     self.http_port = http_port
     self.on_print_job = on_print_job
     self.device_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, printer_name))
-    self._instance_id = 1
+    # Windows rejects announcements from an older instance of the same device.
+    self._instance_id = int(time.time())
     self._message_number = 0
     self._stop = threading.Event()
     self._discovery_thread: threading.Thread | None = None
@@ -188,6 +195,12 @@ class WsdPrintAdvertiser:
       return self._metadata_response(relates_to)
     if action == GET_PRINTER_ELEMENTS:
       return self._printer_elements_response(relates_to)
+    if action == SUBSCRIBE:
+      return self._subscribe_response(relates_to)
+    if action == RENEW:
+      return self._eventing_response("RenewResponse", relates_to)
+    if action == UNSUBSCRIBE:
+      return self._eventing_response("UnsubscribeResponse", relates_to)
     if action == CREATE_PRINT_JOB:
       job_id = self._next_job_id
       self._next_job_id += 1
@@ -270,7 +283,7 @@ class WsdPrintAdvertiser:
       payload = self._probe_match(relates_to)
     elif action == RESOLVE_ACTION:
       target = _resolve_address(xml)
-      if target and target not in {self.device_uuid, f"uuid:{self.device_uuid}"}:
+      if target and target not in {self.device_uuid, f"urn:uuid:{self.device_uuid}"}:
         return
       payload = self._resolve_match(relates_to)
     else:
@@ -291,7 +304,7 @@ class WsdPrintAdvertiser:
   <soap:Body>
     <wsd:Hello>
       <wsa:EndpointReference>
-        <wsa:Address>uuid:{self.device_uuid}</wsa:Address>
+        <wsa:Address>urn:uuid:{self.device_uuid}</wsa:Address>
       </wsa:EndpointReference>
       <wsd:Types>{WSD_TYPES}</wsd:Types>
       <wsd:XAddrs>{escape(self.device_xaddr)}</wsd:XAddrs>
@@ -318,19 +331,21 @@ class WsdPrintAdvertiser:
   def _discovery_match(
     self, wrapper: str, item: str, relates_to: str
   ) -> str:
+    instance_id, message_number = self._next_sequence()
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="{NS_SOAP}" xmlns:wsd="{NS_WSD}" xmlns:wsa="{NS_WSA}">
+<soap:Envelope xmlns:soap="{NS_SOAP}" xmlns:wsd="{NS_WSD}" xmlns:wsa="{NS_WSA}" xmlns:wsdp="{NS_WSDP}" xmlns:nprt="{NS_NPRT}">
   <soap:Header>
     <wsa:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/{wrapper}</wsa:Action>
     <wsa:MessageID>urn:uuid:{uuid.uuid4()}</wsa:MessageID>
     <wsa:RelatesTo>{escape(relates_to)}</wsa:RelatesTo>
     <wsa:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:To>
+    <wsd:AppSequence InstanceId="{instance_id}" MessageNumber="{message_number}"/>
   </soap:Header>
   <soap:Body>
     <wsd:{wrapper}>
       <wsd:{item}>
         <wsa:EndpointReference>
-          <wsa:Address>uuid:{self.device_uuid}</wsa:Address>
+          <wsa:Address>urn:uuid:{self.device_uuid}</wsa:Address>
         </wsa:EndpointReference>
         <wsd:Types>{WSD_TYPES}</wsd:Types>
         <wsd:XAddrs>{escape(self.device_xaddr)}</wsd:XAddrs>
@@ -356,20 +371,27 @@ class WsdPrintAdvertiser:
         <wsdp:ThisDevice>
           <wsdp:FriendlyName xml:lang="en">{name}</wsdp:FriendlyName>
           <wsdp:FirmwareVersion>1.0</wsdp:FirmwareVersion>
-          <wsdp:SerialNumber>mtu-print-node</wsdp:SerialNumber>
+          <wsdp:SerialNumber>papercut-print-node</wsdp:SerialNumber>
         </wsdp:ThisDevice>
       </wsx:MetadataSection>
       <wsx:MetadataSection Dialect="http://schemas.xmlsoap.org/ws/2006/02/devprof/ThisModel">
         <wsdp:ThisModel>
-          <wsdp:Manufacturer xml:lang="en">MTU</wsdp:Manufacturer>
+          <wsdp:Manufacturer xml:lang="en">PaperCut</wsdp:Manufacturer>
           <wsdp:ModelName xml:lang="en">{name}</wsdp:ModelName>
-          <wsdp:ModelNumber>MTU Print Node</wsdp:ModelNumber>
+          <wsdp:ModelNumber>PaperCut Print Node</wsdp:ModelNumber>
           <wsdp:PresentationUrl>http://{escape(self.host_ip)}:{self.ipp_port}/</wsdp:PresentationUrl>
           <PNPX:DeviceCategory>Printers</PNPX:DeviceCategory>
         </wsdp:ThisModel>
       </wsx:MetadataSection>
       <wsx:MetadataSection Dialect="http://schemas.xmlsoap.org/ws/2006/02/devprof/Relationship">
         <wsdp:Relationship Type="http://schemas.xmlsoap.org/ws/2006/02/devprof/host">
+          <wsdp:Host>
+            <wsa:EndpointReference>
+              <wsa:Address>urn:uuid:{self.device_uuid}</wsa:Address>
+            </wsa:EndpointReference>
+            <wsdp:Types>{WSD_TYPES}</wsdp:Types>
+            <wsdp:ServiceId>urn:uuid:{self.device_uuid}</wsdp:ServiceId>
+          </wsdp:Host>
           <wsdp:Hosted>
             <wsa:EndpointReference>
               <wsa:Address>{escape(self.printer_xaddr)}</wsa:Address>
@@ -404,11 +426,11 @@ class WsdPrintAdvertiser:
         <wprt:ElementData Name="wprt:PrinterDescription" Valid="true">
           <wprt:PrinterDescription>
             <wprt:ColorSupported>true</wprt:ColorSupported>
-            <wprt:DeviceId>MANUFACTURER:MTU;MODEL:Print Node;CLS:PRINTER;DES:{name};</wprt:DeviceId>
+            <wprt:DeviceId>MANUFACTURER:PaperCut;MODEL:Print Node;CLS:PRINTER;DES:{name};</wprt:DeviceId>
             <wprt:MultipleDocumentJobsSupported>false</wprt:MultipleDocumentJobsSupported>
             <wprt:PagesPerMinute>20</wprt:PagesPerMinute>
             <wprt:PrinterName xml:lang="en">{name}</wprt:PrinterName>
-            <wprt:PrinterInfo xml:lang="en">MTU Mobility Print Node</wprt:PrinterInfo>
+            <wprt:PrinterInfo xml:lang="en">PaperCut Mobility Print Node</wprt:PrinterInfo>
             <wprt:PrinterLocation xml:lang="en">Pixel Print Node</wprt:PrinterLocation>
             <wprt:PrinterUri>{ipp_uri}</wprt:PrinterUri>
           </wprt:PrinterDescription>
@@ -418,7 +440,6 @@ class WsdPrintAdvertiser:
             <wprt:PageOutputCapabilities>
               <wprt:PageOutput>
                 <wprt:DocumentFormat>application/pdf</wprt:DocumentFormat>
-                <wprt:DocumentFormat>application/vnd.ms-xpsdocument</wprt:DocumentFormat>
                 <wprt:MediaSizeName>iso_a4_210x297mm</wprt:MediaSizeName>
                 <wprt:MediaSizeName>na_letter_8.5x11in</wprt:MediaSizeName>
                 <wprt:Duplex>true</wprt:Duplex>
@@ -445,6 +466,37 @@ class WsdPrintAdvertiser:
       <wprt:JobId>{job_id}</wprt:JobId>
     </wprt:CreatePrintJobResponse>
   </soap:Body>
+</soap:Envelope>"""
+
+  def _subscribe_response(self, relates_to: str) -> str:
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="{NS_SOAP}" xmlns:wsa="{NS_WSA}" xmlns:wse="{NS_WSE}">
+  <soap:Header>
+    <wsa:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:To>
+    <wsa:MessageID>urn:uuid:{uuid.uuid4()}</wsa:MessageID>
+    <wsa:RelatesTo>{escape(relates_to)}</wsa:RelatesTo>
+    <wsa:Action>{NS_WSE}/SubscribeResponse</wsa:Action>
+  </soap:Header>
+  <soap:Body>
+    <wse:SubscribeResponse>
+      <wse:SubscriptionManager>
+        <wsa:Address>{escape(self.printer_xaddr)}</wsa:Address>
+      </wse:SubscriptionManager>
+      <wse:Expires>PT1H</wse:Expires>
+    </wse:SubscribeResponse>
+  </soap:Body>
+</soap:Envelope>"""
+
+  def _eventing_response(self, name: str, relates_to: str) -> str:
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="{NS_SOAP}" xmlns:wsa="{NS_WSA}" xmlns:wse="{NS_WSE}">
+  <soap:Header>
+    <wsa:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:To>
+    <wsa:MessageID>urn:uuid:{uuid.uuid4()}</wsa:MessageID>
+    <wsa:RelatesTo>{escape(relates_to)}</wsa:RelatesTo>
+    <wsa:Action>{NS_WSE}/{name}</wsa:Action>
+  </soap:Header>
+  <soap:Body><wse:{name}/></soap:Body>
 </soap:Envelope>"""
 
   def _send_document_response(self, relates_to: str) -> str:

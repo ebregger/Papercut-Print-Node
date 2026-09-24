@@ -35,8 +35,8 @@ while time.time() < end:
 print(f"matches={len(found)}")
 for addr, text in found:
     print(f"from {addr}")
-    if "MTU Print" in text or "192.168.0.63" in text:
-        print("  -> MTU printer found")
+    if "Papercut" in text or "192.168.0.63" in text:
+        print("  -> PaperCut printer found")
     if "XAddrs" in text:
         start = text.find("<wsd:XAddrs>")
         end_idx = text.find("</wsd:XAddrs>")
